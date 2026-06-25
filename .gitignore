@@ -1,0 +1,7 @@
+/smithy/
+/agent-runs/
+/worlds/
+**/__pycache__/
+*.pyc
+
+/smithy-tasks/
