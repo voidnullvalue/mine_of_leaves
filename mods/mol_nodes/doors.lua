@@ -7,13 +7,13 @@ local function call_door_handler(pos, node, clicker)
 	return nil
 end
 
-minetest.register_node("mol:door_frame", {
+minetest.register_node(":mol:door_frame", {
 	description = "Door Frame",
 	tiles = {PLACEHOLDER_TEXTURE},
 	diggable = false,
 })
 
-minetest.register_node("mol:door_closed", {
+minetest.register_node(":mol:door_closed", {
 	description = "Closed Door",
 	tiles = {PLACEHOLDER_TEXTURE},
 	groups = {door = 1},
@@ -22,7 +22,7 @@ minetest.register_node("mol:door_closed", {
 	on_rightclick = call_door_handler,
 })
 
-minetest.register_node("mol:door_open", {
+minetest.register_node(":mol:door_open", {
 	description = "Open Door",
 	tiles = {PLACEHOLDER_TEXTURE},
 	groups = {door = 1},

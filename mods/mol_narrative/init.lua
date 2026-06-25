@@ -144,7 +144,7 @@ local function show_floor_plan(itemstack, user)
 	return itemstack
 end
 
-minetest.register_craftitem("mol:expedition_journal", {
+minetest.register_craftitem(":mol:expedition_journal", {
 	description = "Expedition Journal",
 	inventory_image = "mol_placeholder.png",
 	on_use = show_journal,
@@ -152,7 +152,7 @@ minetest.register_craftitem("mol:expedition_journal", {
 	on_secondary_use = show_journal,
 })
 
-minetest.register_craftitem("mol:recovered_document", {
+minetest.register_craftitem(":mol:recovered_document", {
 	description = "Recovered Document",
 	inventory_image = "mol_placeholder.png",
 	on_use = show_document,
@@ -160,7 +160,7 @@ minetest.register_craftitem("mol:recovered_document", {
 	on_secondary_use = show_document,
 })
 
-minetest.register_craftitem("mol:floor_plan", {
+minetest.register_craftitem(":mol:floor_plan", {
 	description = "Contradictory Floor Plan",
 	inventory_image = "mol_placeholder.png",
 	on_use = show_floor_plan,
@@ -168,7 +168,7 @@ minetest.register_craftitem("mol:floor_plan", {
 	on_secondary_use = show_floor_plan,
 })
 
-minetest.register_node("mol:expedition_artifact", {
+minetest.register_node(":mol:expedition_artifact", {
 	description = "Abandoned Survey Equipment",
 	tiles = {"mol_placeholder.png"},
 	walkable = false,
