@@ -10,8 +10,19 @@ local function reset_door_state()
 	minetest._emerge_calls = {}
 	minetest._emerge_mode = nil
 	minetest._hold_after = nil
+	minetest._set_nodes = {}
+	minetest._node_map = {}
+	minetest._nil_meta = nil
+	minetest._nil_nodes = nil
 	minetest._us_time = 0
-	minetest.get_node_or_nil = function()
+	minetest.get_node_or_nil = function(pos)
+		if pos then
+			local raw_key = pos.x .. "," .. pos.y .. "," .. pos.z
+			if minetest._nil_nodes and minetest._nil_nodes[raw_key] then return nil end
+			if minetest._node_map and minetest._node_map[raw_key] then
+				return minetest._node_map[raw_key]
+			end
+		end
 		return {name = "mol:door_closed"}
 	end
 end
@@ -54,6 +65,54 @@ end
 
 local function set_door_id(pos, door_id)
 	minetest.get_meta(pos):set_string("door_id", door_id)
+end
+
+local function raw_key(pos)
+	return pos.x .. "," .. pos.y .. "," .. pos.z
+end
+
+local function house_portal_specs_for_test()
+	local h = mol.HOUSE_POS
+	local specs = {}
+	local front_x = h.x + 6
+	local front_z = h.z
+	local interior_x = h.x + 6
+	local interior_z = h.z + 5
+	local threshold_z = h.z + mol.HOUSE_SIZE.z - 2
+	for dy = 0, 2 do
+		local left_name = ({[0] = "mol:door_closed_left_bottom", "mol:door_closed_left_middle", "mol:door_closed_left_top"})[dy]
+		local right_name = ({[0] = "mol:door_closed_right_bottom", "mol:door_closed_right_middle", "mol:door_closed_right_top"})[dy]
+		local single_name = ({[0] = "mol:door_closed_bottom", "mol:door_closed_middle", "mol:door_closed_top"})[dy]
+		specs[#specs + 1] = {pos = {x = front_x, y = h.y + 1 + dy, z = front_z}, name = left_name, door_id = "entry"}
+		specs[#specs + 1] = {pos = {x = front_x + 1, y = h.y + 1 + dy, z = front_z}, name = right_name, door_id = "entry"}
+		specs[#specs + 1] = {pos = {x = interior_x, y = h.y + 1 + dy, z = interior_z}, name = single_name, door_id = "interior_1"}
+		specs[#specs + 1] = {pos = {x = interior_x, y = h.y + 1 + dy, z = threshold_z}, name = single_name, door_id = "threshold_1"}
+	end
+	return specs
+end
+
+local function make_migration_store()
+	local store = {migrations = {playability_v2 = true}}
+	mol.persist = {
+		get = function(ns, key)
+			return store[ns] and store[ns][key]
+		end,
+		set = function(ns, key, value)
+			store[ns] = store[ns] or {}
+			store[ns][key] = value
+		end,
+		delete = function(ns, key)
+			if store[ns] then store[ns][key] = nil end
+		end,
+	}
+	return store
+end
+
+local function run_door_mods_loaded()
+	local first = minetest._mol_doors_callbacks_start or 1
+	for index = first, #minetest._registered_on_mods_loaded do
+		minetest._registered_on_mods_loaded[index]()
+	end
 end
 
 reset_door_state()
@@ -193,6 +252,88 @@ end
 assert_true(seen.near_a, "door spatial lookup includes same mapblock door")
 assert_true(seen.near_b, "door spatial lookup includes neighboring mapblock door")
 assert_true(not seen.far, "door spatial lookup excludes non-neighbor mapblock door")
+
+reset_door_state()
+minetest._meta = {}
+test_logs = {}
+local success_store = make_migration_store()
+local success_specs = house_portal_specs_for_test()
+minetest._nil_meta = {}
+for _, spec in ipairs(success_specs) do
+	minetest._nil_meta[raw_key(spec.pos)] = true
+end
+minetest._emerge_mode = "hold"
+local saved_rebuild_index = mol.doors.rebuild_index
+local rebuild_count = 0
+mol.doors.rebuild_index = function()
+	rebuild_count = rebuild_count + 1
+	saved_rebuild_index()
+end
+local ok, err = pcall(run_door_mods_loaded)
+assert_true(ok, "portal_safety_v3 held emerge does not crash during on_mods_loaded")
+if not ok then print(err) end
+assert_eq(#minetest._set_nodes, 0, "portal_safety_v3 does not write house nodes before emerge completes")
+assert_eq(success_store.migrations.portal_safety_v3, nil, "portal_safety_v3 flag remains unset before emerge completes")
+assert_eq(rebuild_count, 0, "portal_safety_v3 does not rebuild index before house portal writes")
+assert_eq(#minetest._emerge_calls, 1, "portal_safety_v3 queues one house emerge")
+local emerge = minetest._emerge_calls[1]
+assert_true(emerge.minp.x <= mol.HOUSE_POS.x + 4 and emerge.maxp.x >= mol.HOUSE_POS.x + 9,
+	"portal_safety_v3 emerge bounds include front portal with margin")
+assert_true(emerge.minp.z <= mol.HOUSE_POS.z - 2 and emerge.maxp.z >= mol.HOUSE_POS.z + mol.HOUSE_SIZE.z,
+	"portal_safety_v3 emerge bounds include threshold portal with margin")
+minetest._nil_meta = nil
+emerge.callback(emerge.minp, "from_memory", 0)
+assert_eq(#minetest._set_nodes, #success_specs, "portal_safety_v3 writes every house portal segment after emerge")
+for _, spec in ipairs(success_specs) do
+	local node = minetest._node_map[raw_key(spec.pos)]
+	assert_true(node and node.name == spec.name, "portal_safety_v3 writes node " .. raw_key(spec.pos))
+	local meta = minetest._meta[raw_key(spec.pos)]
+	assert_true(meta and meta.door_id == spec.door_id, "portal_safety_v3 writes door_id " .. spec.door_id .. " at " .. raw_key(spec.pos))
+end
+assert_eq(rebuild_count, 1, "portal_safety_v3 rebuilds index after successful writes")
+assert_eq(success_store.migrations.portal_safety_v3, true, "portal_safety_v3 flag is set after successful writes")
+emerge.callback(emerge.minp, "from_memory", 0)
+assert_eq(#minetest._set_nodes, #success_specs, "portal_safety_v3 ignores repeated final emerge callback")
+assert_eq(rebuild_count, 1, "portal_safety_v3 does not complete migration twice")
+mol.doors.rebuild_index = saved_rebuild_index
+
+reset_door_state()
+minetest._meta = {}
+test_logs = {}
+local failure_store = make_migration_store()
+local failure_specs = house_portal_specs_for_test()
+minetest._nil_meta = {}
+for _, spec in ipairs(failure_specs) do
+	minetest._nil_meta[raw_key(spec.pos)] = true
+end
+minetest._emerge_mode = "hold"
+local failure_rebuild_count = 0
+mol.doors.rebuild_index = function()
+	failure_rebuild_count = failure_rebuild_count + 1
+	saved_rebuild_index()
+end
+ok, err = pcall(run_door_mods_loaded)
+assert_true(ok, "portal_safety_v3 nil metadata failure does not crash during on_mods_loaded")
+if not ok then print(err) end
+local failure_emerge = minetest._emerge_calls[1]
+ok, err = pcall(function()
+	failure_emerge.callback(failure_emerge.minp, "from_memory", 0)
+end)
+assert_true(ok, "portal_safety_v3 nil metadata failure does not nil dereference")
+if not ok then print(err) end
+assert_eq(failure_store.migrations.portal_safety_v3, nil, "portal_safety_v3 flag remains unset after metadata failure")
+assert_eq(failure_rebuild_count, 0, "portal_safety_v3 does not rebuild index after metadata failure")
+local saw_error = false
+for _, log in ipairs(test_logs) do
+	if log.level == "error" and string.find(log.message, "portal_safety_v3 migration failed", 1, true) then
+		saw_error = true
+	end
+end
+assert_true(saw_error, "portal_safety_v3 metadata failure logs a clear error")
+run_door_mods_loaded()
+assert_eq(#minetest._emerge_calls, 2, "portal_safety_v3 remains retryable on next startup when flag is unset")
+mol.doors.rebuild_index = saved_rebuild_index
+minetest._nil_meta = nil
 
 -- ---------------------------------------------------------------------------
 -- Tests 9-10: fall / void recovery (mol.doors.is_void_unsafe)

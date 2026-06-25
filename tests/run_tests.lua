@@ -83,6 +83,9 @@ minetest = {
 	end,
 	get_meta = function(pos)
 		local key = pos.x .. "," .. pos.y .. "," .. pos.z
+		if minetest._nil_meta and minetest._nil_meta[key] then
+			return nil
+		end
 		minetest._meta[key] = minetest._meta[key] or {}
 		return {
 			set_string = function(_, name, value)
@@ -97,7 +100,7 @@ minetest = {
 		minetest._chat_messages[#minetest._chat_messages + 1] = {name = name, message = message}
 	end,
 	emerge_area = function(minp, maxp, callback, param)
-		minetest._emerge_calls[#minetest._emerge_calls + 1] = {minp = minp, maxp = maxp, param = param}
+		minetest._emerge_calls[#minetest._emerge_calls + 1] = {minp = minp, maxp = maxp, callback = callback, param = param}
 		if minetest._emerge_mode ~= "hold" then
 			callback(minp, "from_memory", 0, param)
 		end
@@ -116,7 +119,16 @@ minetest = {
 		end
 		return players
 	end,
-	get_node_or_nil = function()
+	get_node_or_nil = function(pos)
+		if pos then
+			local key = pos.x .. "," .. pos.y .. "," .. pos.z
+			if minetest._nil_nodes and minetest._nil_nodes[key] then
+				return nil
+			end
+			if minetest._node_map and minetest._node_map[key] then
+				return minetest._node_map[key]
+			end
+		end
 		return {name = "mol:door_closed"}
 	end,
 	register_globalstep = function(callback)
@@ -158,6 +170,8 @@ minetest = {
 	set_node = function(pos, node)
 		minetest._set_nodes = minetest._set_nodes or {}
 		minetest._set_nodes[#minetest._set_nodes + 1] = {pos = pos, node = node}
+		minetest._node_map = minetest._node_map or {}
+		minetest._node_map[pos.x .. "," .. pos.y .. "," .. pos.z] = {name = node.name, param2 = node.param2}
 	end,
 	add_item = function(pos, item)
 		minetest._added_items = minetest._added_items or {}
@@ -329,6 +343,7 @@ dofile("tests/test_mol_narrative.lua")
 dofile("mods/mol_expedition/init.lua")
 dofile("tests/test_mol_expedition.lua")
 dofile("tests/test_mol_hardening.lua")
+minetest._mol_doors_callbacks_start = #minetest._registered_on_mods_loaded + 1
 dofile("mods/mol_doors/init.lua")
 dofile("tests/test_mol_doors.lua")
 dofile("tests/test_mol_world.lua")

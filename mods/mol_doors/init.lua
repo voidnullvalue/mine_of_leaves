@@ -703,30 +703,89 @@ minetest.register_on_mods_loaded(function()
 	minetest.log("action", "[mol] playability_v2 migration rebuilt " .. rebuilt .. " rooms")
 end)
 
+local function pos_to_string(pos)
+	return "(" .. tostring(pos.x) .. "," .. tostring(pos.y) .. "," .. tostring(pos.z) .. ")"
+end
+
 local function set_door_node(pos, name, facing, door_id)
 	if minetest.set_node then
 		minetest.set_node(pos, {name = name, param2 = mol.door_facedir(facing)})
 	end
+	if minetest.get_node_or_nil then
+		local node = minetest.get_node_or_nil(pos)
+		if not node then
+			return false, "node unavailable after set_node"
+		end
+		if node.name ~= name then
+			return false, "node write did not persist; expected " .. tostring(name) .. ", got " .. tostring(node.name)
+		end
+	end
 	local meta = minetest.get_meta(pos)
+	if not meta then
+		return false, "metadata unavailable"
+	end
 	meta:set_string("door_id", door_id)
+	return true
 end
 
-local function migrate_house_portals()
+local function house_portal_specs()
 	local h = mol.HOUSE_POS
 	local front_x = h.x + 6
 	local front_z = h.z
 	local interior_x = h.x + 6
 	local interior_z = h.z + 5
 	local threshold_z = h.z + mol.HOUSE_SIZE.z - 2
+	local specs = {}
 	for dy = 0, 2 do
 		local left_name = ({[0] = "mol:door_closed_left_bottom", "mol:door_closed_left_middle", "mol:door_closed_left_top"})[dy]
 		local right_name = ({[0] = "mol:door_closed_right_bottom", "mol:door_closed_right_middle", "mol:door_closed_right_top"})[dy]
 		local single_name = ({[0] = "mol:door_closed_bottom", "mol:door_closed_middle", "mol:door_closed_top"})[dy]
-		set_door_node({x = front_x, y = h.y + 1 + dy, z = front_z}, left_name, "n", "entry")
-		set_door_node({x = front_x + 1, y = h.y + 1 + dy, z = front_z}, right_name, "n", "entry")
-		set_door_node({x = interior_x, y = h.y + 1 + dy, z = interior_z}, single_name, "s", "interior_1")
-		set_door_node({x = interior_x, y = h.y + 1 + dy, z = threshold_z}, single_name, "s", "threshold_1")
+		specs[#specs + 1] = {pos = {x = front_x, y = h.y + 1 + dy, z = front_z}, name = left_name, facing = "n", door_id = "entry"}
+		specs[#specs + 1] = {pos = {x = front_x + 1, y = h.y + 1 + dy, z = front_z}, name = right_name, facing = "n", door_id = "entry"}
+		specs[#specs + 1] = {pos = {x = interior_x, y = h.y + 1 + dy, z = interior_z}, name = single_name, facing = "s", door_id = "interior_1"}
+		specs[#specs + 1] = {pos = {x = interior_x, y = h.y + 1 + dy, z = threshold_z}, name = single_name, facing = "s", door_id = "threshold_1"}
 	end
+	return specs
+end
+
+local function bounds_for_specs(specs, margin)
+	local minp = copy_pos(specs[1].pos)
+	local maxp = copy_pos(specs[1].pos)
+	for _, spec in ipairs(specs) do
+		local pos = spec.pos
+		minp.x = math.min(minp.x, pos.x)
+		minp.y = math.min(minp.y, pos.y)
+		minp.z = math.min(minp.z, pos.z)
+		maxp.x = math.max(maxp.x, pos.x)
+		maxp.y = math.max(maxp.y, pos.y)
+		maxp.z = math.max(maxp.z, pos.z)
+	end
+	return vector.subtract(minp, margin), vector.add(maxp, margin)
+end
+
+local function migrate_house_portals(done)
+	local specs = house_portal_specs()
+	local minp, maxp = bounds_for_specs(specs, 2)
+	local completed = false
+
+	minetest.emerge_area(minp, maxp, function(blockpos, action, calls_remaining)
+		if calls_remaining and calls_remaining > 0 then
+			return
+		end
+		if completed then
+			return
+		end
+		completed = true
+
+		for _, spec in ipairs(specs) do
+			local ok, reason = set_door_node(spec.pos, spec.name, spec.facing, spec.door_id)
+			if not ok then
+				done(false, pos_to_string(spec.pos) .. ": " .. tostring(reason))
+				return
+			end
+		end
+		done(true)
+	end)
 end
 
 minetest.register_on_mods_loaded(function()
@@ -747,8 +806,13 @@ minetest.register_on_mods_loaded(function()
 			end
 		end
 	end
-	migrate_house_portals()
-	mol.doors.rebuild_index()
-	mol.persist.set("migrations", "portal_safety_v3", true)
-	minetest.log("action", "[mol] portal_safety_v3 migration rebuilt " .. rebuilt .. " rooms and updated house portals")
+	migrate_house_portals(function(success, error_message)
+		if not success then
+			minetest.log("error", "[mol] portal_safety_v3 migration failed updating house portals at " .. tostring(error_message))
+			return
+		end
+		mol.doors.rebuild_index()
+		mol.persist.set("migrations", "portal_safety_v3", true)
+		minetest.log("action", "[mol] portal_safety_v3 migration rebuilt " .. rebuilt .. " rooms and updated house portals")
+	end)
 end)
