@@ -112,24 +112,28 @@ local function make_house_nodes()
 		end
 	end
 
-	for _, pos in ipairs({
-		{x = front_door_x - 1, y = 1, z = front_door_z},
-		{x = front_door_x + 2, y = 1, z = front_door_z},
-		{x = front_door_x, y = 4, z = front_door_z},
-		{x = front_door_x + 1, y = 4, z = front_door_z},
-		{x = interior_door_x - 1, y = 1, z = interior_wall_z},
-		{x = interior_door_x + 1, y = 1, z = interior_wall_z},
-		{x = interior_door_x, y = 4, z = interior_wall_z},
-		{x = threshold_x - 1, y = 1, z = threshold_z},
-		{x = threshold_x + 1, y = 1, z = threshold_z},
-		{x = threshold_x, y = 4, z = threshold_z},
-	}) do
-		add_node(nodes, index, pos, "mol:door_frame")
+	-- Door frames: full-height jambs (y=1..3) plus header (y=4).
+	-- Front door is 2 nodes wide (front_door_x and front_door_x+1).
+	for dy = 0, 2 do
+		add_node(nodes, index, {x = front_door_x - 1,    y = 1 + dy, z = front_door_z},   "mol:door_frame")
+		add_node(nodes, index, {x = front_door_x + 2,    y = 1 + dy, z = front_door_z},   "mol:door_frame")
+		add_node(nodes, index, {x = interior_door_x - 1, y = 1 + dy, z = interior_wall_z}, "mol:door_frame")
+		add_node(nodes, index, {x = interior_door_x + 1, y = 1 + dy, z = interior_wall_z}, "mol:door_frame")
+		add_node(nodes, index, {x = threshold_x - 1,     y = 1 + dy, z = threshold_z},     "mol:door_frame")
+		add_node(nodes, index, {x = threshold_x + 1,     y = 1 + dy, z = threshold_z},     "mol:door_frame")
 	end
+	add_node(nodes, index, {x = front_door_x,     y = 4, z = front_door_z},   "mol:door_frame")
+	add_node(nodes, index, {x = front_door_x + 1, y = 4, z = front_door_z},   "mol:door_frame")
+	add_node(nodes, index, {x = interior_door_x,  y = 4, z = interior_wall_z}, "mol:door_frame")
+	add_node(nodes, index, {x = threshold_x,      y = 4, z = threshold_z},     "mol:door_frame")
 
-	add_node(nodes, index, {x = front_door_x, y = 1, z = front_door_z}, "mol:door_closed", nil, {door_id = "entry"})
-	add_node(nodes, index, {x = interior_door_x, y = 1, z = interior_wall_z}, "mol:door_closed", nil, {door_id = "interior_1"})
-	add_node(nodes, index, {x = threshold_x, y = 1, z = threshold_z}, "mol:door_closed", nil, {door_id = "threshold_1"})
+	-- Door nodes: three-node-high portals; all nodes carry the canonical door_id.
+	for dy = 0, 2 do
+		add_node(nodes, index, {x = front_door_x,     y = 1 + dy, z = front_door_z},   "mol:door_closed", nil, {door_id = "entry"})
+		add_node(nodes, index, {x = front_door_x + 1, y = 1 + dy, z = front_door_z},   "mol:door_closed", nil, {door_id = "entry"})
+		add_node(nodes, index, {x = interior_door_x,  y = 1 + dy, z = interior_wall_z}, "mol:door_closed", nil, {door_id = "interior_1"})
+		add_node(nodes, index, {x = threshold_x,      y = 1 + dy, z = threshold_z},     "mol:door_closed", nil, {door_id = "threshold_1"})
+	end
 
 	for _, pos in ipairs({
 		{x = 3, y = 6, z = 3},

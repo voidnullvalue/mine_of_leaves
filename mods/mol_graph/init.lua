@@ -262,10 +262,13 @@ local function set_room_door_ids(room_def, room_id)
 	for index, slot in ipairs(room_def.door_slots) do
 		local offset = slot.offset
 		slot.slot_id = "slot_" .. index
+		local canonical_id = door_id(room_id, index)
 		for _, spec in ipairs(room_def.nodes or {}) do
-			if spec.offset and spec.offset.x == offset.x and spec.offset.y == offset.y and spec.offset.z == offset.z then
-				spec.meta = {door_id = door_id(room_id, index)}
-				break
+			if spec.offset and spec.offset.x == offset.x and spec.offset.z == offset.z then
+				local dy = spec.offset.y - offset.y
+				if dy >= 0 and dy <= 2 and spec.name == "mol:door_closed" then
+					spec.meta = {door_id = canonical_id}
+				end
 			end
 		end
 	end

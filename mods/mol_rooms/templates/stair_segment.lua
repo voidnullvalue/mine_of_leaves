@@ -14,7 +14,7 @@ mol.rooms.register_template("stair_segment", function(prng, options)
 			common.add_node(room, {x = x, y = step_y, z = z}, "mol:floor")
 			common.add_node(room, {x = x, y = height - 1, z = z}, "mol:ceiling")
 			for y = step_y + 1, height - 2 do
-				common.add_node(room, {x = x, y = y, z = z}, "mol:void")
+				common.add_node(room, {x = x, y = y, z = z}, "air")
 			end
 		end
 		for y = 0, height - 2 do

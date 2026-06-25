@@ -44,7 +44,16 @@ function common.add_door(room, offset, facing)
 	if not common.in_bounds(offset) then return end
 	local slot_id = #room.door_slots
 	room.door_slots[#room.door_slots + 1] = {offset = offset, facing = facing, slot_id = slot_id}
-	common.add_node(room, offset, "mol:door_closed", nil, {door_id = room.template .. "_" .. slot_id})
+	local placeholder = room.template .. "_" .. slot_id
+	common.add_node(room, offset, "mol:door_closed", nil, {door_id = placeholder})
+	local y1 = {x = offset.x, y = offset.y + 1, z = offset.z}
+	local y2 = {x = offset.x, y = offset.y + 2, z = offset.z}
+	if common.in_bounds(y1) then
+		common.add_node(room, y1, "mol:door_closed", nil, {door_id = placeholder})
+	end
+	if common.in_bounds(y2) then
+		common.add_node(room, y2, "mol:door_closed", nil, {door_id = placeholder})
+	end
 end
 
 function common.add_arrival(room, offset)
@@ -94,7 +103,7 @@ function common.hollow_box(room, sx, sy, sz)
 	for x = 1, sx - 2 do
 		for y = 1, sy - 2 do
 			for z = 1, sz - 2 do
-				common.add_node(room, {x = x, y = y, z = z}, "mol:void")
+				common.add_node(room, {x = x, y = y, z = z}, "air")
 			end
 		end
 	end
@@ -102,21 +111,17 @@ end
 
 function common.add_door_frame(room, offset, facing)
 	local x, y, z = offset.x, offset.y, offset.z
-	local side
 	if facing == "n" or facing == "s" then
-		side = {
-			{x = x - 1, y = y, z = z},
-			{x = x + 1, y = y, z = z},
-			{x = x, y = y + 3, z = z},
-		}
+		for dy = 0, 2 do
+			common.add_node(room, {x = x - 1, y = y + dy, z = z}, "mol:door_frame")
+			common.add_node(room, {x = x + 1, y = y + dy, z = z}, "mol:door_frame")
+		end
+		common.add_node(room, {x = x, y = y + 3, z = z}, "mol:door_frame")
 	else
-		side = {
-			{x = x, y = y, z = z - 1},
-			{x = x, y = y, z = z + 1},
-			{x = x, y = y + 3, z = z},
-		}
-	end
-	for _, pos in ipairs(side) do
-		common.add_node(room, pos, "mol:door_frame")
+		for dy = 0, 2 do
+			common.add_node(room, {x = x, y = y + dy, z = z - 1}, "mol:door_frame")
+			common.add_node(room, {x = x, y = y + dy, z = z + 1}, "mol:door_frame")
+		end
+		common.add_node(room, {x = x, y = y + 3, z = z}, "mol:door_frame")
 	end
 end

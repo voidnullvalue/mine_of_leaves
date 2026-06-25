@@ -9,12 +9,16 @@ mol.doors.index = mol.doors.index or {}
 local CHECK_INTERVAL = 0.25
 local COOLDOWN_US = 1000000
 local PROXIMITY_RADIUS = 1.5
+local RECOVERY_INTERVAL = 0.25
 -- Luanti 5.10 ObjectRef:set_sky accepts set_sky(sky_parameters). For
 -- type="plain", base_color controls both fog and sky.
 local NORMAL_SKY = {type = "plain", base_color = {r = 5, g = 5, b = 8, a = 255}}
 local BLACKOUT_SKY = {type = "plain", base_color = {r = 0, g = 0, b = 0, a = 255}}
+local OUTDOOR_SKY = {type = "regular"}
 
 local elapsed_time = 0
+local recovery_elapsed = 0
+local recovery_in_progress = {}
 
 local function copy_pos(pos)
 	if not pos then return nil end
@@ -299,7 +303,13 @@ local function finish_traversal(player_name, entry_pos, yaw, dest_room_id)
 		end
 		minetest.after(0.3, function()
 			local current = minetest.get_player_by_name(player_name)
-			if current then reveal_player(current) end
+			if current then
+				if dest_room_id == "room_yard" then
+					current:set_sky(OUTDOOR_SKY)
+				else
+					reveal_player(current)
+				end
+			end
 			set_cooldown(player_name)
 			clear_traversal(player_name)
 		end)
@@ -419,10 +429,83 @@ local function check_player_proximity(player, now)
 	end
 end
 
+-- ---------------------------------------------------------------------------
+-- Fall / void recovery
+-- ---------------------------------------------------------------------------
+
+local function pos_in_yard(pos)
+	return pos.x >= mol.YARD_MIN.x - 1 and pos.x <= mol.YARD_MAX.x + 1 and
+		pos.z >= mol.YARD_MIN.z - 1 and pos.z <= mol.YARD_MAX.z + 1 and
+		pos.y >= -2 and pos.y <= mol.BOUNDARY_HEIGHT + 4
+end
+
+local function pos_in_allocated_cell(pos)
+	if not (mol.cells and mol.cells.alloc) then return false end
+	local cell = mol.world_to_cell(pos)
+	for _, cell_coord in pairs(mol.cells.alloc) do
+		if type(cell_coord) == "table" and
+			cell_coord.x == cell.x and cell_coord.y == cell.y and cell_coord.z == cell.z then
+			return true
+		end
+	end
+	return false
+end
+
+-- Exposed for tests.
+function mol.doors.is_void_unsafe(pos)
+	if pos_in_yard(pos) then return false end
+	if pos_in_allocated_cell(pos) then return false end
+	return true
+end
+
+local function recover_player_to_spawn(player)
+	local player_name = player:get_player_name()
+	if recovery_in_progress[player_name] then return end
+	recovery_in_progress[player_name] = true
+	local spawn = {x = mol.SPAWN_POS.x, y = mol.SPAWN_POS.y, z = mol.SPAWN_POS.z}
+	minetest.emerge_area(
+		vector.subtract(spawn, 8),
+		vector.add(spawn, 8),
+		function(blockpos, action, calls_remaining, param)
+			if calls_remaining and calls_remaining > 0 then return end
+			local p = minetest.get_player_by_name(param.player_name)
+			if not p then
+				recovery_in_progress[param.player_name] = nil
+				return
+			end
+			p:set_pos(param.spawn)
+			if p.set_velocity then
+				pcall(function() p:set_velocity({x = 0, y = 0, z = 0}) end)
+			end
+			mol.players[param.player_name] = mol.players[param.player_name] or {}
+			mol.players[param.player_name].current_room_id = "room_yard"
+			p:set_sky(OUTDOOR_SKY)
+			recovery_in_progress[param.player_name] = nil
+			minetest.log("action", "[mol_doors] recovered " .. param.player_name .. " from void")
+		end,
+		{player_name = player_name, spawn = spawn}
+	)
+end
+
+local function check_void_recovery(player)
+	local player_name = player:get_player_name()
+	if mol.doors.traversing[player_name] then return end
+	if recovery_in_progress[player_name] then return end
+	local pos = player:get_pos()
+	if not mol.doors.is_void_unsafe(pos) then return end
+	recover_player_to_spawn(player)
+end
+
 minetest.register_globalstep(function(dtime)
 	elapsed_time = elapsed_time + dtime
+	recovery_elapsed = recovery_elapsed + dtime
+	local do_recovery = recovery_elapsed >= RECOVERY_INTERVAL
+	if do_recovery then recovery_elapsed = 0 end
 	for _, player in ipairs(minetest.get_connected_players()) do
 		check_player_proximity(player, elapsed_time)
+		if do_recovery then
+			check_void_recovery(player)
+		end
 	end
 end)
 
@@ -461,3 +544,32 @@ minetest.register_on_joinplayer(function(player)
 end)
 
 mol.doors.rebuild_index()
+
+-- ---------------------------------------------------------------------------
+-- One-time playability migration (v2)
+-- Rebuilds existing rooms with corrected geometry (3-tall portals, air interiors).
+-- Preserves room IDs, graph topology, cell allocation, and player progression.
+-- ---------------------------------------------------------------------------
+minetest.register_on_mods_loaded(function()
+	if mol.persist.get("migrations", "playability_v2") then return end
+	local rebuilt = 0
+	for _, room_id in ipairs(mol.graph.room_order or {}) do
+		if room_id ~= "room_yard" then
+			local room = mol.graph.get_room(room_id)
+			if room and room.template and room.room_seed then
+				local cell = mol.cells and mol.cells.alloc and mol.cells.alloc[room_id]
+				if type(cell) == "table" then
+					local ok, room_def = pcall(mol.rooms.generate, room.template, room.room_seed, {})
+					if ok and room_def then
+						room_def.room_id = room_id
+						mol.graph.prepare_room_def(room_def, room_id)
+						mol.cells.build(cell, room_def, true)
+						rebuilt = rebuilt + 1
+					end
+				end
+			end
+		end
+	end
+	mol.persist.set("migrations", "playability_v2", true)
+	minetest.log("action", "[mol] playability_v2 migration rebuilt " .. rebuilt .. " rooms")
+end)

@@ -89,3 +89,32 @@ end
 assert_true(seen.near_a, "door spatial lookup includes same mapblock door")
 assert_true(seen.near_b, "door spatial lookup includes neighboring mapblock door")
 assert_true(not seen.far, "door spatial lookup excludes non-neighbor mapblock door")
+
+-- ---------------------------------------------------------------------------
+-- Tests 9-10: fall / void recovery (mol.doors.is_void_unsafe)
+-- ---------------------------------------------------------------------------
+
+-- Temporarily override alloc so we control which cells are "allocated".
+local saved_alloc = mol.cells.alloc
+mol.cells.alloc = {}
+
+-- Test 9: a position inside an allocated cell is NOT flagged unsafe.
+mol.cells.alloc["recovery_test_room"] = {x = 2, y = 0, z = 0}
+local origin_safe = mol.cell_to_world(2, 0, 0)
+local safe_pos = {x = origin_safe.x + 10, y = origin_safe.y + 5, z = origin_safe.z + 10}
+assert_true(not mol.doors.is_void_unsafe(safe_pos),
+	"fall recovery: allocated-cell position is not flagged unsafe")
+
+-- Test 10: a position in unallocated interior space IS flagged unsafe.
+-- Cell (3,0,0) is deliberately not in alloc.
+local origin_unsafe = mol.cell_to_world(3, 0, 0)
+local unsafe_pos = {x = origin_unsafe.x + 5, y = origin_unsafe.y + 5, z = origin_unsafe.z + 5}
+assert_true(mol.doors.is_void_unsafe(unsafe_pos),
+	"fall recovery: unallocated void position is flagged unsafe")
+
+-- A yard position must never be flagged unsafe.
+local yard_pos = {x = 0, y = 1, z = 0}
+assert_true(not mol.doors.is_void_unsafe(yard_pos),
+	"fall recovery: yard position is not flagged unsafe")
+
+mol.cells.alloc = saved_alloc

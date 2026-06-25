@@ -10,6 +10,7 @@ minetest.register_node(":mol:door_frame", {
 	tiles = {"mol_door_frame.png"},
 	paramtype = "light",
 	diggable = false,
+	light_source = 2,
 })
 
 minetest.register_node(":mol:door_closed", {
