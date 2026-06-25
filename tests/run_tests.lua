@@ -143,6 +143,18 @@ minetest = {
 	register_chatcommand = function(name, def)
 		minetest._registered_chatcommands[name] = def
 	end,
+	register_on_newplayer = function(callback)
+		minetest._registered_on_newplayers = minetest._registered_on_newplayers or {}
+		minetest._registered_on_newplayers[#minetest._registered_on_newplayers + 1] = callback
+	end,
+	register_on_placenode = function(callback)
+		minetest._registered_on_placenodes = minetest._registered_on_placenodes or {}
+		minetest._registered_on_placenodes[#minetest._registered_on_placenodes + 1] = callback
+	end,
+	register_on_generated = function(callback)
+		minetest._registered_on_generated = minetest._registered_on_generated or {}
+		minetest._registered_on_generated[#minetest._registered_on_generated + 1] = callback
+	end,
 	set_node = function(pos, node)
 		minetest._set_nodes = minetest._set_nodes or {}
 		minetest._set_nodes[#minetest._set_nodes + 1] = {pos = pos, node = node}
@@ -318,6 +330,8 @@ dofile("tests/test_mol_expedition.lua")
 dofile("tests/test_mol_hardening.lua")
 dofile("mods/mol_doors/init.lua")
 dofile("tests/test_mol_doors.lua")
+dofile("mods/mol_nodes/init.lua")
+dofile("tests/test_mol_world.lua")
 
 if failure_count > 0 then
 	print("FAILURES " .. failure_count)

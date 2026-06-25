@@ -1,5 +1,3 @@
-local PLACEHOLDER_TEXTURE = "mol_placeholder.png"
-
 local function call_door_handler(pos, node, clicker)
 	if mol.doors and mol.doors.on_rightclick then
 		return mol.doors.on_rightclick(pos, node, clicker)
@@ -9,13 +7,15 @@ end
 
 minetest.register_node(":mol:door_frame", {
 	description = "Door Frame",
-	tiles = {PLACEHOLDER_TEXTURE},
+	tiles = {"mol_door_frame.png"},
+	paramtype = "light",
 	diggable = false,
 })
 
 minetest.register_node(":mol:door_closed", {
 	description = "Closed Door",
-	tiles = {PLACEHOLDER_TEXTURE},
+	tiles = {"mol_door_closed.png"},
+	paramtype = "light",
 	groups = {door = 1},
 	walkable = false,
 	diggable = false,
@@ -24,7 +24,8 @@ minetest.register_node(":mol:door_closed", {
 
 minetest.register_node(":mol:door_open", {
 	description = "Open Door",
-	tiles = {PLACEHOLDER_TEXTURE},
+	tiles = {"mol_door_open.png"},
+	paramtype = "light",
 	groups = {door = 1},
 	walkable = false,
 	diggable = false,

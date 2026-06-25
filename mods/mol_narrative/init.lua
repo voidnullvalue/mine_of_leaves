@@ -146,7 +146,7 @@ end
 
 minetest.register_craftitem(":mol:expedition_journal", {
 	description = "Expedition Journal",
-	inventory_image = "mol_placeholder.png",
+	inventory_image = "mol_expedition_journal.png",
 	on_use = show_journal,
 	on_place = show_journal,
 	on_secondary_use = show_journal,
@@ -154,7 +154,7 @@ minetest.register_craftitem(":mol:expedition_journal", {
 
 minetest.register_craftitem(":mol:recovered_document", {
 	description = "Recovered Document",
-	inventory_image = "mol_placeholder.png",
+	inventory_image = "mol_recovered_document.png",
 	on_use = show_document,
 	on_place = show_document,
 	on_secondary_use = show_document,
@@ -162,7 +162,7 @@ minetest.register_craftitem(":mol:recovered_document", {
 
 minetest.register_craftitem(":mol:floor_plan", {
 	description = "Contradictory Floor Plan",
-	inventory_image = "mol_placeholder.png",
+	inventory_image = "mol_floor_plan.png",
 	on_use = show_floor_plan,
 	on_place = show_floor_plan,
 	on_secondary_use = show_floor_plan,
@@ -170,7 +170,8 @@ minetest.register_craftitem(":mol:floor_plan", {
 
 minetest.register_node(":mol:expedition_artifact", {
 	description = "Abandoned Survey Equipment",
-	tiles = {"mol_placeholder.png"},
+	tiles = {"mol_expedition_artifact.png"},
+	paramtype = "light",
 	walkable = false,
 	diggable = false,
 	groups = {not_in_creative_inventory = 1},

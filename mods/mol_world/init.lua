@@ -190,6 +190,26 @@ local function build_yard_and_house(minp, maxp)
 		end
 	end
 
+	-- Replace the playable yard interior above the floor with real air so that
+	-- sunlight can reach the yard surface.  The column extends to the top of this
+	-- mapchunk so the sky opening is unbroken for calc_lighting.  Boundary walls
+	-- and house nodes placed in subsequent steps overwrite the positions they need.
+	local air_id = minetest.get_content_id("air")
+	local sky_xmin = clamp(minp.x, YARD_MIN.x + 1, YARD_MAX.x - 1)
+	local sky_xmax = clamp(maxp.x, YARD_MIN.x + 1, YARD_MAX.x - 1)
+	local sky_zmin = clamp(minp.z, YARD_MIN.z + 1, YARD_MAX.z - 1)
+	local sky_zmax = clamp(maxp.z, YARD_MIN.z + 1, YARD_MAX.z - 1)
+	local sky_ymin = math.max(minp.y, 1)
+	if sky_xmin <= sky_xmax and sky_zmin <= sky_zmax and sky_ymin <= maxp.y then
+		for x = sky_xmin, sky_xmax do
+			for y = sky_ymin, maxp.y do
+				for z = sky_zmin, sky_zmax do
+					data[area:index(x, y, z)] = air_id
+				end
+			end
+		end
+	end
+
 	for y = clamp(minp.y, 1, BOUNDARY_HEIGHT), clamp(maxp.y, 1, BOUNDARY_HEIGHT) do
 		for x = clamp(minp.x, YARD_MIN.x, YARD_MAX.x), clamp(maxp.x, YARD_MIN.x, YARD_MAX.x) do
 			if minp.z <= YARD_MIN.z and maxp.z >= YARD_MIN.z then
@@ -259,16 +279,35 @@ local function fill_with_void(minp, maxp)
 	local area = VoxelArea:new({MinEdge = emin, MaxEdge = emax})
 	local data = vm:get_data()
 	local void_id = minetest.get_content_id("mol:void")
+	local air_id  = minetest.get_content_id("air")
+
+	-- Compute the yard sky-column bounds clipped to this chunk.
+	-- Chunks above the yard footprint (y > footprint_max.y) land here and
+	-- must also carry air in the yard column so that sunlight can propagate
+	-- downward through an unbroken column of air into the yard.
+	local sc_xmin = math.max(minp.x, YARD_MIN.x + 1)
+	local sc_xmax = math.min(maxp.x, YARD_MAX.x - 1)
+	local sc_zmin = math.max(minp.z, YARD_MIN.z + 1)
+	local sc_zmax = math.min(maxp.z, YARD_MAX.z - 1)
+	local sc_ymin = math.max(minp.y, 1)
+	local has_sky_col = sc_xmin <= sc_xmax and sc_zmin <= sc_zmax and sc_ymin <= maxp.y
 
 	for x = minp.x, maxp.x do
 		for y = minp.y, maxp.y do
 			for z = minp.z, maxp.z do
-				data[area:index(x, y, z)] = void_id
+				if has_sky_col and y >= sc_ymin and
+						x >= sc_xmin and x <= sc_xmax and
+						z >= sc_zmin and z <= sc_zmax then
+					data[area:index(x, y, z)] = air_id
+				else
+					data[area:index(x, y, z)] = void_id
+				end
 			end
 		end
 	end
 
 	vm:set_data(data)
+	if has_sky_col then vm:calc_lighting() end
 	vm:write_to_map()
 	vm:update_map()
 end

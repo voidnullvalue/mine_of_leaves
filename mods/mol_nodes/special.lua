@@ -1,8 +1,7 @@
-local PLACEHOLDER_TEXTURE = "mol_placeholder.png"
-
 minetest.register_node(":mol:dark_void", {
 	description = "Dark Void",
-	tiles = {PLACEHOLDER_TEXTURE},
+	tiles = {"mol_dark_void.png"},
+	paramtype = "light",
 	diggable = false,
 	light_source = 0,
 	sunlight_propagates = false,
@@ -10,7 +9,8 @@ minetest.register_node(":mol:dark_void", {
 
 minetest.register_node(":mol:light_fixture", {
 	description = "Light Fixture",
-	tiles = {PLACEHOLDER_TEXTURE},
+	tiles = {"mol_light_fixture.png"},
+	paramtype = "light",
 	walkable = false,
 	diggable = false,
 	light_source = 12,
@@ -18,7 +18,8 @@ minetest.register_node(":mol:light_fixture", {
 
 minetest.register_node(":mol:entry_marker", {
 	description = "Entry Marker",
-	tiles = {PLACEHOLDER_TEXTURE},
+	tiles = {"mol_entry_marker.png"},
+	paramtype = "light",
 	diggable = false,
 	light_source = 4,
 })

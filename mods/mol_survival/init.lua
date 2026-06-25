@@ -399,12 +399,12 @@ end
 
 minetest.register_craftitem(":mol:flashlight", {
 	description = "Flashlight",
-	inventory_image = "mol_placeholder.png",
+	inventory_image = "mol_flashlight.png",
 })
 
 minetest.register_craftitem(":mol:battery", {
 	description = "Battery",
-	inventory_image = "mol_placeholder.png",
+	inventory_image = "mol_battery.png",
 	on_use = function(itemstack, user)
 		if not user then return itemstack end
 		local state = get_state(user)
@@ -416,12 +416,12 @@ minetest.register_craftitem(":mol:battery", {
 
 minetest.register_craftitem(":mol:cold_pack", {
 	description = "Handwarmer",
-	inventory_image = "mol_placeholder.png",
+	inventory_image = "mol_cold_pack.png",
 })
 
 minetest.register_craftitem(":mol:ration", {
 	description = "Ration",
-	inventory_image = "mol_placeholder.png",
+	inventory_image = "mol_ration.png",
 	on_use = function(itemstack, user)
 		if not user then return itemstack end
 		local state = get_state(user)
@@ -433,7 +433,7 @@ minetest.register_craftitem(":mol:ration", {
 
 minetest.register_craftitem(":mol:compass", {
 	description = "Compass",
-	inventory_image = "mol_placeholder.png",
+	inventory_image = "mol_compass.png",
 	on_use = function(itemstack, user)
 		if not user then return itemstack end
 		local room_id = player_room_id(user)
@@ -447,9 +447,9 @@ minetest.register_craftitem(":mol:compass", {
 minetest.register_node(":mol:chalk_mark", {
 	description = "Chalk Mark",
 	drawtype = "signlike",
-	tiles = {"mol_placeholder.png^[colorize:#e6f2ff:120"},
-	inventory_image = "mol_placeholder.png^[colorize:#e6f2ff:120",
-	wield_image = "mol_placeholder.png^[colorize:#e6f2ff:120",
+	tiles = {"mol_chalk_mark.png"},
+	inventory_image = "mol_chalk.png",
+	wield_image = "mol_chalk.png",
 	paramtype = "light",
 	paramtype2 = "wallmounted",
 	walkable = false,
@@ -466,7 +466,8 @@ minetest.register_node(":mol:chalk_mark", {
 
 minetest.register_node(":mol:expedition_notebook", {
 	description = "Expedition Notebook",
-	tiles = {"mol_placeholder.png^[colorize:#ffffaa:90"},
+	tiles = {"mol_expedition_notebook.png"},
+	paramtype = "light",
 	walkable = false,
 	groups = {oddly_breakable_by_hand = 1},
 	on_rightclick = function(pos, node, clicker)
@@ -481,7 +482,7 @@ minetest.register_node(":mol:expedition_notebook", {
 
 minetest.register_craftitem(":mol:chalk", {
 	description = "Chalk",
-	inventory_image = "mol_placeholder.png^[colorize:#e6f2ff:120",
+	inventory_image = "mol_chalk.png",
 	on_place = function(itemstack, placer, pointed_thing)
 		if not (pointed_thing and pointed_thing.above and placer) then return itemstack end
 		local pos = pointed_thing.above
@@ -495,7 +496,7 @@ minetest.register_craftitem(":mol:chalk", {
 
 minetest.register_craftitem(":mol:map_fragment", {
 	description = "Map Fragment",
-	inventory_image = "mol_placeholder.png",
+	inventory_image = "mol_map_fragment.png",
 	on_use = function(itemstack, user)
 		if not user then return itemstack end
 		local room_id = player_room_id(user)
