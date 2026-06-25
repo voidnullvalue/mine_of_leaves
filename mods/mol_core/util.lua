@@ -18,6 +18,33 @@ mol.YARD_MIN = {x = -12, y = 0, z = -10}
 mol.YARD_MAX = {x = 12, y = 0, z = 14}
 mol.BOUNDARY_HEIGHT = 5
 
+mol.DOOR_FACEDIR = {n = 0, e = 1, s = 2, w = 3}
+mol.DOOR_INWARD = {
+	n = {x = 0, y = 0, z = 1},
+	e = {x = -1, y = 0, z = 0},
+	s = {x = 0, y = 0, z = -1},
+	w = {x = 1, y = 0, z = 0},
+}
+mol.DOOR_INWARD_YAW = {
+	n = 0,
+	e = math.pi / 2,
+	s = math.pi,
+	w = math.pi * 1.5,
+}
+
+function mol.door_facedir(facing)
+	return mol.DOOR_FACEDIR[facing] or 0
+end
+
+function mol.door_inward_dir(facing)
+	local dir = mol.DOOR_INWARD[facing] or mol.DOOR_INWARD.n
+	return {x = dir.x, y = dir.y, z = dir.z}
+end
+
+function mol.door_inward_yaw(facing)
+	return mol.DOOR_INWARD_YAW[facing] or 0
+end
+
 function mol.cell_to_world(cx, cy, cz)
 	return {
 		x = mol.INTERIOR_ORIGIN.x + cx * mol.CELL_SIZE,

@@ -1,6 +1,7 @@
 local function reset_door_state()
 	mol.doors.traversing = {}
 	mol.doors.cooldown = {}
+	mol.doors.suppressed = {}
 	mol.doors.last_check = {}
 	mol.doors.index_clear()
 	minetest._players = {}
@@ -10,6 +11,9 @@ local function reset_door_state()
 	minetest._emerge_mode = nil
 	minetest._hold_after = nil
 	minetest._us_time = 0
+	minetest.get_node_or_nil = function()
+		return {name = "mol:door_closed"}
+	end
 end
 
 local function make_player(name, pos)
@@ -19,6 +23,7 @@ local function make_player(name, pos)
 		yaw = 1.25,
 		sky_calls = {},
 		set_pos_calls = {},
+		set_velocity_calls = {},
 	}
 	function player:get_player_name() return self.name end
 	function player:get_pos() return {x = self.pos.x, y = self.pos.y, z = self.pos.z} end
@@ -29,8 +34,22 @@ local function make_player(name, pos)
 		self.pos = {x = pos.x, y = pos.y, z = pos.z}
 		self.set_pos_calls[#self.set_pos_calls + 1] = self.pos
 	end
+	function player:set_velocity(velocity)
+		self.set_velocity_calls[#self.set_velocity_calls + 1] = {x = velocity.x, y = velocity.y, z = velocity.z}
+	end
 	minetest._players[name] = player
 	return player
+end
+
+local function set_node_map(map)
+	minetest.get_node_or_nil = function(pos)
+		local key = math.floor(pos.x + 0.5) .. "," .. math.floor(pos.y + 0.5) .. "," .. math.floor(pos.z + 0.5)
+		return {name = map[key] or "air"}
+	end
+end
+
+local function key(pos)
+	return math.floor(pos.x + 0.5) .. "," .. math.floor(pos.y + 0.5) .. "," .. math.floor(pos.z + 0.5)
 end
 
 local function set_door_id(pos, door_id)
@@ -68,6 +87,91 @@ local cooldown_player = make_player("cool", {x = 7.5, y = 2, z = 3})
 assert_true(mol.doors.traverse(cooldown_player, cooldown_pos), "door traversal cooldown first traversal succeeds")
 assert_true(mol.doors.cooldown.cool ~= nil, "door traversal cooldown is set after completion")
 assert_true(not mol.doors.traverse(cooldown_player, cooldown_pos), "door traversal cooldown blocks immediate retraversal")
+
+reset_door_state()
+local function make_destination_room(facing)
+	local origin = mol.cells.get_origin({x = 0, y = 0, z = 0})
+	local room_def = {
+		room_id = "room_dest",
+		template = "test",
+		size = {x = 8, y = 6, z = 8},
+		nodes = {},
+		door_slots = {{offset = {x = 3, y = 1, z = 0}, facing = facing}},
+		arrival = {{offset = {x = 3, y = 1, z = 1}}},
+	}
+	local map = {}
+	for x = 1, 6 do
+		for z = 1, 6 do
+			map[key({x = origin.x + x, y = origin.y, z = origin.z + z})] = "mol:floor"
+			map[key({x = origin.x + x, y = origin.y + 1, z = origin.z + z})] = "air"
+			map[key({x = origin.x + x, y = origin.y + 2, z = origin.z + z})] = "air"
+		end
+	end
+	local door_pos = {x = origin.x + 3, y = origin.y + 1, z = origin.z}
+	map[key(door_pos)] = "mol:door_closed"
+	set_node_map(map)
+	return room_def, door_pos
+end
+
+local dest_def, dest_door_pos = make_destination_room("n")
+mol.cells.alloc.room_dest = {x = 0, y = 0, z = 0}
+local source_pos = {x = -20, y = 1, z = -20}
+set_door_id(source_pos, "source:slot_1")
+mol.graph.get_destination = function() return {room_id = "room_dest", to_slot = 1} end
+mol.graph.ensure_placed = function() return {room_id = "room_dest", cell_coord = {x = 0, y = 0, z = 0}, template = "test", room_seed = 1} end
+mol.graph.get_room = function() return {room_id = "room_dest", cell_coord = {x = 0, y = 0, z = 0}, template = "test", room_seed = 1} end
+mol.rooms.generate = function() return dest_def end
+local arrival_player = make_player("arrival", {x = source_pos.x, y = source_pos.y, z = source_pos.z})
+assert_true(mol.doors.traverse(arrival_player, source_pos), "door traversal to generated room succeeds")
+assert_true(vector.distance(arrival_player.pos, dest_door_pos) > 1.5, "arrival is outside trigger radius")
+assert_eq(arrival_player.set_velocity_calls[#arrival_player.set_velocity_calls], {x = 0, y = 0, z = 0}, "velocity is zeroed on arrival")
+assert_eq(arrival_player.yaw, mol.door_inward_yaw("n"), "destination yaw is derived from destination facing")
+assert_eq(mol.doors.suppressed.arrival.door_id, "room_dest:slot_1", "destination suppression stores canonical door id")
+
+minetest._us_time = 300000
+arrival_player.pos = {x = dest_door_pos.x, y = dest_door_pos.y, z = dest_door_pos.z + 0.5}
+mol.doors.index_clear()
+mol.doors.index_add_door(dest_door_pos, "room_dest:slot_1")
+for _, callback in ipairs(minetest._registered_globalsteps) do callback(0.3) end
+assert_eq(#arrival_player.set_pos_calls, 1, "stationary suppressed player does not auto reverse")
+assert_true(mol.doors.suppressed.arrival ~= nil, "suppression remains while player is inside exit radius")
+
+minetest._us_time = 600000
+arrival_player.pos = {x = dest_door_pos.x, y = dest_door_pos.y, z = dest_door_pos.z + 2.5}
+for _, callback in ipairs(minetest._registered_globalsteps) do callback(0.3) end
+assert_eq(mol.doors.suppressed.arrival, nil, "suppression clears after moving beyond exit radius")
+
+reset_door_state()
+local yard_source = {x = 5, y = 2, z = 5}
+set_door_id(yard_source, "room_a:slot_1")
+mol.graph.get_destination = function() return {room_id = "room_yard", to_slot = 1} end
+local yard_player = make_player("yard", yard_source)
+assert_true(mol.doors.traverse(yard_player, yard_source), "yard return traversal succeeds")
+assert_true(not test_same_value(yard_player.pos, mol.SPAWN_POS), "yard return does not use global spawn")
+local front_anchor = {x = mol.HOUSE_POS.x + 6, y = mol.HOUSE_POS.y + 1, z = mol.HOUSE_POS.z}
+assert_true(vector.distance(yard_player.pos, front_anchor) > 1.5, "yard return is outside entry trigger radius")
+assert_eq(yard_player.yaw, math.pi, "yard return faces away from front door")
+
+reset_door_state()
+local original_traverse = mol.doors.traverse
+local traversals = 0
+mol.doors.traverse = function()
+	traversals = traversals + 1
+	return true
+end
+mol.doors.index_add_door({x = 0, y = 1, z = 0}, "entry")
+mol.doors.index_add_door({x = 1, y = 1, z = 0}, "entry")
+local wide_player = make_player("wide", {x = 0.5, y = 1, z = 0})
+for _, callback in ipairs(minetest._registered_globalsteps) do callback(0.3) end
+assert_eq(traversals, 1, "two-wide portal produces only one traversal call")
+mol.doors.traverse = original_traverse
+
+local closed_def = minetest._registered_nodes[":mol:door_closed"]
+assert_true(closed_def and closed_def.walkable, "closed portal node is physically walkable")
+assert_eq(closed_def and closed_def.drawtype, "nodebox", "closed portal uses nodebox drawtype")
+assert_eq(closed_def and closed_def.paramtype2, "facedir", "closed portal uses facedir orientation")
+local fixed = closed_def and closed_def.collision_box and closed_def.collision_box.fixed and closed_def.collision_box.fixed[1]
+assert_true(fixed and (fixed[6] - fixed[3]) < 0.25, "closed portal collision is a thin plane")
 
 reset_door_state()
 mol.doors.index_add_door({x = 0, y = 0, z = 0}, "a")

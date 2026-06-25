@@ -65,6 +65,13 @@ local function door_id(room_id, slot)
 	return room_id .. ":slot_" .. slot
 end
 
+local function is_door_segment(name)
+	return type(name) == "string" and (
+		name == "mol:door_closed" or
+		string.sub(name, 1, 16) == "mol:door_closed_"
+	)
+end
+
 local function edge_id(from_door_id, to_room_id, to_slot)
 	return from_door_id .. "->" .. to_room_id .. ":slot_" .. to_slot
 end
@@ -266,7 +273,7 @@ local function set_room_door_ids(room_def, room_id)
 		for _, spec in ipairs(room_def.nodes or {}) do
 			if spec.offset and spec.offset.x == offset.x and spec.offset.z == offset.z then
 				local dy = spec.offset.y - offset.y
-				if dy >= 0 and dy <= 2 and spec.name == "mol:door_closed" then
+				if dy >= 0 and dy <= 2 and is_door_segment(spec.name) then
 					spec.meta = {door_id = canonical_id}
 				end
 			end

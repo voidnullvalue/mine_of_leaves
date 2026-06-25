@@ -128,11 +128,16 @@ local function make_house_nodes()
 	add_node(nodes, index, {x = threshold_x,      y = 4, z = threshold_z},     "mol:door_frame")
 
 	-- Door nodes: three-node-high portals; all nodes carry the canonical door_id.
+	local north_param2 = mol.door_facedir("n")
+	local south_param2 = mol.door_facedir("s")
 	for dy = 0, 2 do
-		add_node(nodes, index, {x = front_door_x,     y = 1 + dy, z = front_door_z},   "mol:door_closed", nil, {door_id = "entry"})
-		add_node(nodes, index, {x = front_door_x + 1, y = 1 + dy, z = front_door_z},   "mol:door_closed", nil, {door_id = "entry"})
-		add_node(nodes, index, {x = interior_door_x,  y = 1 + dy, z = interior_wall_z}, "mol:door_closed", nil, {door_id = "interior_1"})
-		add_node(nodes, index, {x = threshold_x,      y = 1 + dy, z = threshold_z},     "mol:door_closed", nil, {door_id = "threshold_1"})
+		local left_name = ({[0] = "mol:door_closed_left_bottom", "mol:door_closed_left_middle", "mol:door_closed_left_top"})[dy]
+		local right_name = ({[0] = "mol:door_closed_right_bottom", "mol:door_closed_right_middle", "mol:door_closed_right_top"})[dy]
+		local single_name = ({[0] = "mol:door_closed_bottom", "mol:door_closed_middle", "mol:door_closed_top"})[dy]
+		add_node(nodes, index, {x = front_door_x,     y = 1 + dy, z = front_door_z},   left_name, north_param2, {door_id = "entry"})
+		add_node(nodes, index, {x = front_door_x + 1, y = 1 + dy, z = front_door_z},   right_name, north_param2, {door_id = "entry"})
+		add_node(nodes, index, {x = interior_door_x,  y = 1 + dy, z = interior_wall_z}, single_name, south_param2, {door_id = "interior_1"})
+		add_node(nodes, index, {x = threshold_x,      y = 1 + dy, z = threshold_z},     single_name, south_param2, {door_id = "threshold_1"})
 	end
 
 	for _, pos in ipairs({

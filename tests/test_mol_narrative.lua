@@ -31,11 +31,19 @@ local function scan_strings(value, callback)
 end
 
 if narrative_present then
+	local function registered_craftitem(name)
+		return minetest._registered_craftitems[name] or minetest._registered_craftitems[":" .. name]
+	end
+
+	local function registered_node(name)
+		return minetest._registered_nodes[name] or minetest._registered_nodes[":" .. name]
+	end
+
 	assert_true(mol.narrative ~= nil, "narrative namespace loads")
-	assert_true(minetest._registered_craftitems["mol:expedition_journal"] ~= nil, "journal item registered")
-	assert_true(minetest._registered_craftitems["mol:recovered_document"] ~= nil, "document item registered")
-	assert_true(minetest._registered_craftitems["mol:floor_plan"] ~= nil, "floor plan item registered")
-	assert_true(minetest._registered_nodes["mol:expedition_artifact"] ~= nil, "artifact node registered")
+	assert_true(registered_craftitem("mol:expedition_journal") ~= nil, "journal item registered")
+	assert_true(registered_craftitem("mol:recovered_document") ~= nil, "document item registered")
+	assert_true(registered_craftitem("mol:floor_plan") ~= nil, "floor plan item registered")
+	assert_true(registered_node("mol:expedition_artifact") ~= nil, "artifact node registered")
 
 	scan_strings(mol.narrative, function(text)
 		local lowered = string.lower(text)
@@ -75,21 +83,21 @@ if narrative_present then
 	local stack = ItemStack("mol:expedition_journal")
 	stack:get_meta():set_string("journal_id", "corridor_count")
 	minetest._formspecs = {}
-	minetest._registered_craftitems["mol:expedition_journal"].on_place(stack, player)
+	registered_craftitem("mol:expedition_journal").on_place(stack, player)
 	assert_true(#minetest._formspecs == 1, "journal right-click displays formspec")
 	assert_formspec_valid(minetest._formspecs[1].formspec, "shown journal formspec")
 
 	local document_stack = ItemStack("mol:recovered_document")
 	document_stack:get_meta():set_string("document_id", "survey_notice")
 	minetest._formspecs = {}
-	minetest._registered_craftitems["mol:recovered_document"].on_place(document_stack, player)
+	registered_craftitem("mol:recovered_document").on_place(document_stack, player)
 	assert_true(#minetest._formspecs == 1, "document right-click displays formspec")
 	assert_formspec_valid(minetest._formspecs[1].formspec, "shown document formspec")
 
 	local map_stack = ItemStack("mol:floor_plan")
 	map_stack:get_meta():set_string("map_id", "annex")
 	minetest._formspecs = {}
-	minetest._registered_craftitems["mol:floor_plan"].on_place(map_stack, player)
+	registered_craftitem("mol:floor_plan").on_place(map_stack, player)
 	assert_true(#minetest._formspecs == 1, "floor plan right-click displays formspec")
 	assert_formspec_valid(minetest._formspecs[1].formspec, "shown floor plan formspec")
 

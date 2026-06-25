@@ -3,12 +3,15 @@ mol.players = mol.players or {}
 
 mol.doors.traversing = mol.doors.traversing or {}
 mol.doors.cooldown = mol.doors.cooldown or {}
+mol.doors.suppressed = mol.doors.suppressed or {}
 mol.doors.last_check = mol.doors.last_check or {}
 mol.doors.index = mol.doors.index or {}
 
 local CHECK_INTERVAL = 0.25
-local COOLDOWN_US = 1000000
+local COOLDOWN_US = 250000
 local PROXIMITY_RADIUS = 1.5
+local EXIT_RADIUS = 2.35
+local ARRIVAL_CLEARANCE = 2.15
 local RECOVERY_INTERVAL = 0.25
 -- Luanti 5.10 ObjectRef:set_sky accepts set_sky(sky_parameters). For
 -- type="plain", base_color controls both fog and sky.
@@ -32,6 +35,10 @@ end
 
 local function clear_traversal(player_name)
 	mol.doors.traversing[player_name] = nil
+end
+
+local function clear_suppression(player_name)
+	mol.doors.suppressed[player_name] = nil
 end
 
 local function reveal_player(player)
@@ -145,6 +152,14 @@ local function facing_axis(facing)
 	return nil
 end
 
+local function is_door_segment(name)
+	return type(name) == "string" and (
+		name == "mol:door_closed" or
+		string.sub(name, 1, 16) == "mol:door_closed_" or
+		name == "mol:door_open"
+	)
+end
+
 local function offset_bounds(origin, arrival, center)
 	if type(arrival) ~= "table" or #arrival == 0 then return nil end
 	local bounds
@@ -184,6 +199,50 @@ local function clamp(value, min_value, max_value)
 	return value
 end
 
+local function round_node_coord(value)
+	return math.floor(value + 0.5)
+end
+
+local function node_pos_for_player_pos(pos)
+	return {
+		x = round_node_coord(pos.x),
+		y = round_node_coord(pos.y),
+		z = round_node_coord(pos.z),
+	}
+end
+
+local function node_name_at(pos)
+	local node = minetest.get_node_or_nil and minetest.get_node_or_nil(pos)
+	return node and node.name or nil
+end
+
+local function is_walkable_node(name)
+	if not name or name == "air" then return false end
+	local nodes = minetest.registered_nodes or minetest._registered_nodes
+	local def = nodes and (nodes[name] or nodes[":" .. name])
+	if def and def.walkable ~= nil then return def.walkable end
+	return name ~= "air"
+end
+
+local function clear_player_motion(player)
+	if not player then return end
+	if player.set_velocity then
+		pcall(function() player:set_velocity({x = 0, y = 0, z = 0}) end)
+	end
+	if player.set_acceleration then
+		pcall(function() player:set_acceleration({x = 0, y = 0, z = 0}) end)
+	end
+end
+
+local function valid_arrival_position(pos)
+	local feet = node_pos_for_player_pos(pos)
+	local floor = {x = feet.x, y = feet.y - 1, z = feet.z}
+	local head = {x = feet.x, y = feet.y + 1, z = feet.z}
+	return is_walkable_node(node_name_at(floor)) and
+		not is_walkable_node(node_name_at(feet)) and
+		not is_walkable_node(node_name_at(head))
+end
+
 local function nearest_arrival(origin, room_def, door_pos)
 	local best
 	local best_dist
@@ -202,6 +261,13 @@ local function nearest_arrival(origin, room_def, door_pos)
 		end
 	end
 	return best
+end
+
+local function clamp_to_room_interior(pos, origin, room_def)
+	if not (room_def and room_def.size) then return pos end
+	pos.x = clamp(pos.x, origin.x + 1, origin.x + room_def.size.x - 2)
+	pos.z = clamp(pos.z, origin.z + 1, origin.z + room_def.size.z - 2)
+	return pos
 end
 
 local function source_lateral_offset(player_pos, door_pos, source_facing)
@@ -232,20 +298,33 @@ local function compute_entry_position(room, room_def, slot_index, source)
 	local entry_pos = nearest_arrival(origin, room_def, door_pos)
 	if not entry_pos then return nil, "missing arrival zone" end
 
-	local bounds = offset_bounds(origin, room_def.arrival, entry_pos)
-	if not bounds then return nil, "missing arrival bounds" end
-
 	local axis = facing_axis(slot.facing)
 	local offset = source and source.lateral_offset or 0
-	if axis == "x" then
-		entry_pos.x = entry_pos.x + offset
-	elseif axis == "z" then
-		entry_pos.z = entry_pos.z + offset
+	local dir = mol.door_inward_dir(slot.facing)
+	local base_y = entry_pos.y
+	local lateral_offsets = {offset, 0, -0.5, 0.5, -1, 1}
+	local inward_distances = {ARRIVAL_CLEARANCE, EXIT_RADIUS, EXIT_RADIUS + 0.35, PROXIMITY_RADIUS + 0.2}
+
+	for _, distance in ipairs(inward_distances) do
+		for _, lateral in ipairs(lateral_offsets) do
+			local candidate = {
+				x = door_pos.x + dir.x * distance,
+				y = base_y,
+				z = door_pos.z + dir.z * distance,
+			}
+			if axis == "x" then
+				candidate.x = candidate.x + lateral
+			elseif axis == "z" then
+				candidate.z = candidate.z + lateral
+			end
+			clamp_to_room_interior(candidate, origin, room_def)
+			if vector.distance(candidate, door_pos) > PROXIMITY_RADIUS and valid_arrival_position(candidate) then
+				return candidate
+			end
+		end
 	end
-	entry_pos.x = clamp(entry_pos.x, bounds.min.x, bounds.max.x)
-	entry_pos.y = clamp(entry_pos.y, bounds.min.y, bounds.max.y)
-	entry_pos.z = clamp(entry_pos.z, bounds.min.z, bounds.max.z)
-	return entry_pos
+
+	return nil, "no safe arrival candidate"
 end
 
 local function abort_traversal(player_name, message)
@@ -255,6 +334,7 @@ local function abort_traversal(player_name, message)
 	end
 	if message then chat(player_name, message) end
 	clear_traversal(player_name)
+	clear_suppression(player_name)
 	return false
 end
 
@@ -282,19 +362,32 @@ local function emerge_then_set_pos(player_name, entry_pos, yaw, done)
 			local player = minetest.get_player_by_name(param.player_name)
 			if not player then
 				clear_traversal(param.player_name)
+				clear_suppression(param.player_name)
 				return
 			end
+			clear_player_motion(player)
 			player:set_pos(param.entry_pos)
+			clear_player_motion(player)
 			if player.set_look_horizontal then
-				player:set_look_horizontal(param.source_yaw)
+				player:set_look_horizontal(param.yaw)
 			end
 			done(player)
 		end,
-		{player_name = player_name, entry_pos = entry_pos, source_yaw = yaw}
+		{player_name = player_name, entry_pos = entry_pos, yaw = yaw}
 	)
 end
 
-local function finish_traversal(player_name, entry_pos, yaw, dest_room_id)
+local function suppress_destination(player_name, door_id, door_pos)
+	if not (door_id and door_pos) then return end
+	mol.doors.suppressed[player_name] = {
+		door_id = door_id,
+		pos = copy_pos(door_pos),
+		exit_radius = EXIT_RADIUS,
+		guard_until = now_us() + COOLDOWN_US,
+	}
+end
+
+local function finish_traversal(player_name, entry_pos, yaw, dest_room_id, dest_door_id, dest_door_pos)
 	emerge_then_set_pos(player_name, entry_pos, yaw, function(player)
 		mol.players[player_name] = mol.players[player_name] or {}
 		mol.players[player_name].current_room_id = dest_room_id
@@ -311,15 +404,20 @@ local function finish_traversal(player_name, entry_pos, yaw, dest_room_id)
 				end
 			end
 			set_cooldown(player_name)
+			suppress_destination(player_name, dest_door_id, dest_door_pos)
 			clear_traversal(player_name)
 		end)
 	end)
 end
 
 local function entry_for_yard(source)
-	local pos = copy_pos(mol.SPAWN_POS)
+	local pos = {
+		x = mol.HOUSE_POS.x + 6.5,
+		y = mol.HOUSE_POS.y + 1,
+		z = mol.HOUSE_POS.z - ARRIVAL_CLEARANCE,
+	}
 	if source and source.lateral_offset then
-		pos.x = pos.x + source.lateral_offset
+		pos.x = clamp(pos.x + source.lateral_offset, mol.HOUSE_POS.x + 6.15, mol.HOUSE_POS.x + 6.85)
 	end
 	return pos
 end
@@ -330,11 +428,9 @@ function mol.doors.traverse(player, door_pos)
 	if mol.doors.traversing[player_name] or cooldown_active(player_name) then return false end
 
 	local player_pos = player:get_pos()
-	local yaw = player:get_look_horizontal()
 	mol.doors.traversing[player_name] = {
 		timestamp = now_us(),
 		source_pos = copy_pos(player_pos),
-		source_yaw = yaw,
 	}
 
 	local meta = minetest.get_meta(door_pos)
@@ -375,8 +471,14 @@ function mol.doors.traverse(player, door_pos)
 	conceal_player(player)
 
 	local entry_pos
+	local yaw
+	local dest_door_id
+	local dest_door_pos
 	if dest.room_id == "room_yard" then
 		entry_pos = entry_for_yard(source)
+		yaw = math.pi
+		dest_door_id = "entry"
+		dest_door_pos = {x = mol.HOUSE_POS.x + 6, y = mol.HOUSE_POS.y + 1, z = mol.HOUSE_POS.z}
 	else
 		local ok, room_or_err = pcall(mol.graph.ensure_placed, dest.room_id)
 		if not ok or not (room_or_err and room_or_err.cell_coord) then
@@ -388,8 +490,9 @@ function mol.doors.traverse(player, door_pos)
 		end
 
 		local room = mol.graph.get_room(dest.room_id)
+		local room_def
 		local ok_entry, computed_or_err, err = pcall(function()
-			local room_def = room_def_for(room)
+			room_def = room_def_for(room)
 			return compute_entry_position(room, room_def, dest.to_slot, source)
 		end)
 		if not ok_entry or not computed_or_err then
@@ -397,9 +500,20 @@ function mol.doors.traverse(player, door_pos)
 			return abort_traversal(player_name, "[mol] The passage did not open.")
 		end
 		entry_pos = computed_or_err
+		local slot = room_def and room_def.door_slots and room_def.door_slots[dest.to_slot]
+		yaw = mol.door_inward_yaw(slot and slot.facing)
+		if slot and slot.offset then
+			local origin = mol.cells.get_origin(room.cell_coord)
+			dest_door_id = dest.room_id .. ":slot_" .. tostring(dest.to_slot)
+			dest_door_pos = {
+				x = origin.x + slot.offset.x,
+				y = origin.y + slot.offset.y,
+				z = origin.z + slot.offset.z,
+			}
+		end
 	end
 
-	finish_traversal(player_name, entry_pos, yaw, dest.room_id)
+	finish_traversal(player_name, entry_pos, yaw, dest.room_id, dest_door_id, dest_door_pos)
 	return true
 end
 
@@ -408,7 +522,18 @@ function mol.doors.on_rightclick(pos, node, clicker)
 end
 
 local function is_door_node(name)
-	return name == "mol:door_closed" or name == "mol:door_open"
+	return is_door_segment(name)
+end
+
+local function suppressed_for_entry(player_name, entry, pos)
+	local suppressed = mol.doors.suppressed[player_name]
+	if not suppressed then return false end
+	local dist = vector.distance(pos, suppressed.pos)
+	if dist >= (suppressed.exit_radius or EXIT_RADIUS) then
+		clear_suppression(player_name)
+		return false
+	end
+	return entry and entry.door_id == suppressed.door_id
 end
 
 local function check_player_proximity(player, now)
@@ -419,6 +544,9 @@ local function check_player_proximity(player, now)
 
 	local pos = player:get_pos()
 	for _, entry in ipairs(mol.doors.nearby_index_entries(pos)) do
+		if suppressed_for_entry(name, entry, pos) then
+			return
+		end
 		if vector.distance(pos, entry.pos) <= PROXIMITY_RADIUS then
 			local node = minetest.get_node_or_nil(entry.pos)
 			if node and is_door_node(node.name) then
@@ -520,6 +648,7 @@ minetest.register_on_leaveplayer(function(player)
 		}
 		clear_traversal(player_name)
 	end
+	clear_suppression(player_name)
 end)
 
 minetest.register_on_joinplayer(function(player)
@@ -572,4 +701,54 @@ minetest.register_on_mods_loaded(function()
 	end
 	mol.persist.set("migrations", "playability_v2", true)
 	minetest.log("action", "[mol] playability_v2 migration rebuilt " .. rebuilt .. " rooms")
+end)
+
+local function set_door_node(pos, name, facing, door_id)
+	if minetest.set_node then
+		minetest.set_node(pos, {name = name, param2 = mol.door_facedir(facing)})
+	end
+	local meta = minetest.get_meta(pos)
+	meta:set_string("door_id", door_id)
+end
+
+local function migrate_house_portals()
+	local h = mol.HOUSE_POS
+	local front_x = h.x + 6
+	local front_z = h.z
+	local interior_x = h.x + 6
+	local interior_z = h.z + 5
+	local threshold_z = h.z + mol.HOUSE_SIZE.z - 2
+	for dy = 0, 2 do
+		local left_name = ({[0] = "mol:door_closed_left_bottom", "mol:door_closed_left_middle", "mol:door_closed_left_top"})[dy]
+		local right_name = ({[0] = "mol:door_closed_right_bottom", "mol:door_closed_right_middle", "mol:door_closed_right_top"})[dy]
+		local single_name = ({[0] = "mol:door_closed_bottom", "mol:door_closed_middle", "mol:door_closed_top"})[dy]
+		set_door_node({x = front_x, y = h.y + 1 + dy, z = front_z}, left_name, "n", "entry")
+		set_door_node({x = front_x + 1, y = h.y + 1 + dy, z = front_z}, right_name, "n", "entry")
+		set_door_node({x = interior_x, y = h.y + 1 + dy, z = interior_z}, single_name, "s", "interior_1")
+		set_door_node({x = interior_x, y = h.y + 1 + dy, z = threshold_z}, single_name, "s", "threshold_1")
+	end
+end
+
+minetest.register_on_mods_loaded(function()
+	if mol.persist.get("migrations", "portal_safety_v3") then return end
+	local rebuilt = 0
+	for _, room_id in ipairs(mol.graph.room_order or {}) do
+		if room_id ~= "room_yard" then
+			local room = mol.graph.get_room(room_id)
+			local cell = mol.cells and mol.cells.alloc and mol.cells.alloc[room_id]
+			if room and room.template and room.room_seed and type(cell) == "table" then
+				local ok, room_def = pcall(mol.rooms.generate, room.template, room.room_seed, {})
+				if ok and room_def then
+					room_def.room_id = room_id
+					mol.graph.prepare_room_def(room_def, room_id)
+					mol.cells.build(cell, room_def, true)
+					rebuilt = rebuilt + 1
+				end
+			end
+		end
+	end
+	migrate_house_portals()
+	mol.doors.rebuild_index()
+	mol.persist.set("migrations", "portal_safety_v3", true)
+	minetest.log("action", "[mol] portal_safety_v3 migration rebuilt " .. rebuilt .. " rooms and updated house portals")
 end)

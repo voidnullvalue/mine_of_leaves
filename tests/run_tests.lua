@@ -316,6 +316,7 @@ dofile("tests/test_mol_rooms.lua")
 dofile("tests/test_mol_graph.lua")
 dofile("tests/test_mol_determinism_large.lua")
 dofile("tests/test_mol_mutations.lua")
+dofile("mods/mol_nodes/init.lua")
 dofile("mods/mol_survival/init.lua")
 dofile("tests/test_mol_survival.lua")
 if minetest.get_modpath("mol_narrative") then
@@ -330,7 +331,6 @@ dofile("tests/test_mol_expedition.lua")
 dofile("tests/test_mol_hardening.lua")
 dofile("mods/mol_doors/init.lua")
 dofile("tests/test_mol_doors.lua")
-dofile("mods/mol_nodes/init.lua")
 dofile("tests/test_mol_world.lua")
 
 if failure_count > 0 then

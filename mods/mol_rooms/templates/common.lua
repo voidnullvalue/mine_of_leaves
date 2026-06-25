@@ -45,14 +45,15 @@ function common.add_door(room, offset, facing)
 	local slot_id = #room.door_slots
 	room.door_slots[#room.door_slots + 1] = {offset = offset, facing = facing, slot_id = slot_id}
 	local placeholder = room.template .. "_" .. slot_id
-	common.add_node(room, offset, "mol:door_closed", nil, {door_id = placeholder})
+	local param2 = mol.door_facedir(facing)
+	common.add_node(room, offset, "mol:door_closed_bottom", param2, {door_id = placeholder})
 	local y1 = {x = offset.x, y = offset.y + 1, z = offset.z}
 	local y2 = {x = offset.x, y = offset.y + 2, z = offset.z}
 	if common.in_bounds(y1) then
-		common.add_node(room, y1, "mol:door_closed", nil, {door_id = placeholder})
+		common.add_node(room, y1, "mol:door_closed_middle", param2, {door_id = placeholder})
 	end
 	if common.in_bounds(y2) then
-		common.add_node(room, y2, "mol:door_closed", nil, {door_id = placeholder})
+		common.add_node(room, y2, "mol:door_closed_top", param2, {door_id = placeholder})
 	end
 end
 

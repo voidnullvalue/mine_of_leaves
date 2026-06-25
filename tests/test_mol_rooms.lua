@@ -16,6 +16,10 @@ local function offset_in_bounds(offset)
 		offset.z >= 0 and offset.z <= 63
 end
 
+local function is_portal_segment(name)
+	return name == "mol:door_closed" or string.sub(tostring(name or ""), 1, 16) == "mol:door_closed_"
+end
+
 for _, template_name in ipairs(templates) do
 	local room_def = mol.rooms.generate(template_name, 42, {})
 	assert_true(room_def ~= nil, template_name .. " generates")
@@ -161,7 +165,7 @@ for _, template_name in ipairs(all_templates) do
 		slot_positions[key] = i
 	end
 
-	-- Test 2: portal contains door nodes at base, base+1, base+2
+	-- Test 2: portal contains facedir-oriented door segment nodes at base, base+1, base+2
 	local node_index = {}
 	for _, spec in ipairs(room_def.nodes) do
 		local k = spec.offset.x .. "," .. spec.offset.y .. "," .. spec.offset.z
@@ -172,8 +176,10 @@ for _, template_name in ipairs(all_templates) do
 		for dy = 0, 2 do
 			local k = ox .. "," .. (oy + dy) .. "," .. oz
 			local spec = node_index[k]
-			assert_true(spec and spec.name == "mol:door_closed",
-				template_name .. " slot " .. i .. " has door_closed at base+" .. dy)
+			assert_true(spec and is_portal_segment(spec.name),
+				template_name .. " slot " .. i .. " has portal segment at base+" .. dy)
+			assert_eq(spec and spec.param2, mol.door_facedir(slot.facing),
+				template_name .. " slot " .. i .. " has facedir param2 at base+" .. dy)
 		end
 	end
 
